@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.63.0/codemirror.min.css"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.63.0/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.63.0/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Data Loader</title>
+  </head>
+  <body>
+    <div id="uploadMessage">
+      <p>Upload a market data file (.csv) with in following format:</p>
+      <p>
+        <small>date and time (unix time stamp), open, high, low, close</small>
+      </p>
+      <p>
+        <small>e.g. 1715264700, 60000.01, 60500.15, 59500.40, 60200.33</small>
+      </p>
+      <p>
+        <small
+          >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1715264760, 60200.33,
+          61500.60, 59800.22, 62200.71</small
+        >
+      </p>
+    </div>
+    <input type="file" id="fileInput" accept=".csv" />
+    <textarea id="backtestLogic" rows="10" cols="50"></textarea>
+    <button id="runBacktestButton">Run Backtest</button>
+    <progress id="testProgress" value="0" max="100"></progress>
+    <canvas id="balanceGraph" width="800" height="400"></canvas>
+
+    <script src="backtest.js"></script>
+  </body>
+</html>
