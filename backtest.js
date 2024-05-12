@@ -2,7 +2,7 @@ let spread = 0 //0.0001
 let openCommission = 0.05 //percent
 let closeCommission = 0.05 //percent
 let initialAccountBalance = 1000 //base currency
-const dataChunkLength = 10000
+const dataChunkLength = 2000
 let pendingOrders = []
 let openPositions = []
 let closedPositions = []
@@ -13,6 +13,8 @@ let currentCandle = 0
 let ticketCounter = 1
 let accountBalance = initialAccountBalance
 let accountBalanceHistory = [accountBalance]
+let accountEquity = [accountBalance]
+let chunkTimeout
 
 let myChart
 
@@ -42,6 +44,12 @@ document
     runBacktest(candles, dataChunkLength)
   })
 runBacktestButton.disabled = true
+
+document
+  .getElementById('stopBacktestButton')
+  .addEventListener('click', function () {
+    stopBacktest()
+  })
 
 // Function to handle file loading
 function handleFileSelect(event) {
@@ -95,12 +103,37 @@ function parseCSV(data) {
   dataDisplay.innerHTML = 'Data is successfully uploaded and parsed.'
 }
 
-// Run backtest logic against candle dataw
+// Stop backtest
+function stopBacktest() {
+  // Clear the timeout to stop further processing of chunks
+  clearTimeout(chunkTimeout)
+
+  // Reset all variables and data structures to their initial state
+  pendingOrders = []
+  openPositions = []
+  closedPositions = []
+  canceledOrders = []
+  ticketCounter = 1
+  accountBalance = initialAccountBalance
+  accountBalanceHistory = [accountBalance]
+  accountEquity = [accountBalance]
+  runBacktestButton.disabled = false
+
+  // Log a message indicating that the backtest has been stopped
+  console.log('Backtest stopped.')
+}
+
+// Run backtest logic against candle data
 function runBacktest(candles, chunkLength) {
+  runBacktestButton.disabled = true
   // Execute setup function if defined
   backtestLogic = editor.getValue()
   currentCandle = candles[0]
-  executeSetup(backtestLogic, currentCandle.open)
+  currentCandleInLogic = {
+    open: candles[0].open,
+    dateTime: candles[0].dateTime,
+  }
+  executeSetup(backtestLogic, currentCandleInLogic)
 
   // Clear previous data
   pendingOrders = []
@@ -110,6 +143,7 @@ function runBacktest(candles, chunkLength) {
   ticketCounter = 1
   accountBalance = initialAccountBalance
   accountBalanceHistory = [accountBalance]
+  accountEquity = [accountBalance]
 
   if (openCommission < 0 || closeCommission < 0) {
     {
@@ -132,14 +166,18 @@ function runBacktest(candles, chunkLength) {
   processNextChunk()
 
   function processNextChunk() {
-    drawBalanceGraph(accountBalanceHistory, false) // Update the balance graph
+    drawBalanceGraph(accountBalanceHistory, accountEquity) // Update the balance graph
     const start = chunkIndex * chunkLength
     const end = Math.min((chunkIndex + 1) * chunkLength, candles.length)
 
     for (let i = start; i < end; i++) {
       candleIndex = i
       currentCandle = candles[i]
-      executeLoop(backtestLogic, currentCandle.open)
+      currentCandleInLogic = {
+        open: candles[i].open,
+        dateTime: candles[i].dateTime,
+      }
+      executeLoop(backtestLogic, candleIndex, currentCandleInLogic)
       checkPendingOrders(currentCandle)
       closePositions(currentCandle)
     }
@@ -150,19 +188,19 @@ function runBacktest(candles, chunkLength) {
 
     if (chunkIndex < totalChunks) {
       // If there are more chunks, schedule the next one after a delay
-      setTimeout(processNextChunk, 0.1) // Use setTimeout to yield control
+      chunkTimeout = setTimeout(processNextChunk, 0.1) // Use setTimeout to yield control
     } else {
       // Finished processing all chunks
-      drawBalanceGraph(accountBalanceHistory, false) // Update the balance graph
+      drawBalanceGraph(accountBalanceHistory, accountEquity) // Update the balance graph
       console.log('Backtest completed.')
     }
   }
 
-  function executeLoop(backtestLogic, currentCandleOpenPrice) {
+  function executeLoop(backtestLogic, currentCandleIndex, currentCandle) {
     eval(backtestLogic)
     loop()
   }
-  function executeSetup(backtestLogic, currentCandleOpenPrice) {
+  function executeSetup(backtestLogic, currentCandle) {
     eval(backtestLogic)
     setup()
   }
@@ -217,6 +255,7 @@ function checkPendingOrders(candle) {
         ' ',
         order.executionPrice
       )
+      updateEquity(order.executionPrice)
     }
   }
 }
@@ -311,7 +350,7 @@ function closePositions(candle) {
 
       // Update total profit loss after closing positions
       accountBalance += closedPosition.profitLoss
-      accountBalanceHistory.push(accountBalance) // Add the current balance to the history
+      updateEquity(closePrice)
     }
   }
 }
@@ -333,7 +372,23 @@ function calculateProfitLoss(orderType, orderSize, openPrice, closePrice) {
   return totalProfitLoss
 }
 
-function drawBalanceGraph(data) {
+function updateEquity(price) {
+  accountBalanceHistory.push(accountBalance) // Add the current balance to the history
+  let openPositionProfitLossSum = 0
+  for (let i = 0; i < openPositions.length; i++) {
+    const openPosition = openPositions[i]
+    const openPositionProfitLoss = calculateProfitLoss(
+      openPosition.orderType,
+      openPosition.orderSize,
+      openPosition.executionPrice,
+      price
+    )
+    openPositionProfitLossSum += openPositionProfitLoss
+  }
+  accountEquity.push(accountBalance + openPositionProfitLossSum)
+}
+
+function drawBalanceGraph(data1, data2) {
   // Get the canvas element
   const canvas = document.getElementById('balanceGraph')
 
@@ -347,23 +402,32 @@ function drawBalanceGraph(data) {
   }
 
   // Determine the minimum and maximum values in the data
-  const minValue = Math.min(...data)
-  const maxValue = Math.max(...data)
+  const minValue = Math.min(...data1, ...data2)
+  const maxValue = Math.max(...data1, ...data2)
 
   // Calculate padding for the y-axis range
   const padding = (maxValue - minValue) * 0.1 // 10% padding
 
   // Prepare data for Chart.js
   const chartData = {
-    labels: Array.from({ length: data.length }, (_, i) => i + 1),
+    labels: Array.from({ length: data1.length }, (_, i) => i + 1),
     datasets: [
       {
-        label: 'Balance History',
-        data: data,
+        label: 'Account Balance',
+        data: data1,
         pointStyle: 'circle', // Set point style to circle
         radius: 0, // Set radius to 0 to render as dots
-        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+        backgroundColor: 'rgba(255, 99, 132, 0.2)', // Red color
         borderColor: 'rgba(255, 99, 132, 1)',
+        borderWidth: 1,
+      },
+      {
+        label: 'Account Equity',
+        data: data2,
+        pointStyle: 'circle', // Set point style to circle
+        radius: 0, // Set radius to 0 to render as dots
+        backgroundColor: 'rgba(75, 192, 192, 0.2)', // Green color
+        borderColor: 'rgba(75, 192, 192, 1)',
         borderWidth: 1,
       },
     ],
@@ -468,6 +532,7 @@ function OrderSend(
       executionPrice: parseFloat(executionPrice),
       takeProfit: takeProfit,
       stopLoss: stopLoss,
+      orderTime: currentCandle.dateTime,
       magicNumber: magicNumber,
     }
     pendingOrders.push(order)
@@ -487,6 +552,7 @@ function OrderSend(
       ' ',
       order.executionPrice
     )
+    updateEquity(order.executionPrice)
   }
   if (orderType === 'Sell' || orderType === 'Buy') {
     const openPosition = {
@@ -516,6 +582,7 @@ function OrderSend(
       ' ',
       openPosition.executionPrice
     )
+    updateEquity(openPosition.executionPrice)
   }
 }
 
@@ -702,19 +769,100 @@ function MovingAverage(period, offset) {
   return average
 }
 
+// Find peaks function
+function FindPeaks(halfWindowSize, numberOfCandles) {
+  const peaks = []
+  const bufferCandle = candles.slice(
+    candleIndex + 1 - numberOfCandles,
+    candleIndex + 1
+  )
+  const candlesLength = bufferCandle.length
+
+  // Iterate over candles, starting from startIndex and ending before the last candle
+  for (let i = halfWindowSize; i < candlesLength - halfWindowSize; i++) {
+    const currentCandle = bufferCandle[i]
+    let isPeak = true
+
+    // Determine the start and end indices for the current window
+    const windowStartIndex = i - halfWindowSize
+    const windowEndIndex = i + halfWindowSize
+
+    // Check if the current candle high is greater than the highs of the candles within the window
+    for (let j = windowStartIndex; j <= windowEndIndex; j++) {
+      if (j !== i && currentCandle.high <= bufferCandle[j].high) {
+        isPeak = false
+        break
+      }
+    }
+
+    // If the current candle is a peak, add it to the peaks array
+    if (isPeak) {
+      // Calculate the index from the end of the candles array
+      const indexFromEnd = candlesLength - 1 - i
+      peaks.push({
+        index: indexFromEnd,
+        high: currentCandle.high,
+      })
+    }
+  }
+
+  return peaks
+}
+
+// Find valleys function
+function FindValleys(halfWindowSize, numberOfCandles) {
+  const valleys = []
+  const bufferCandle = candles.slice(
+    candleIndex + 1 - numberOfCandles,
+    candleIndex + 1
+  )
+  const candlesLength = bufferCandle.length
+
+  // Iterate over candles, starting from startIndex and ending before the last candle
+  for (let i = halfWindowSize; i < candlesLength - halfWindowSize; i++) {
+    const currentCandle = bufferCandle[i]
+    let isValley = true
+
+    // Determine the start and end indices for the current window
+    const windowStartIndex = i - halfWindowSize
+    const windowEndIndex = i + halfWindowSize
+
+    // Check if the current candle low is less than the lows of the candles within the window
+    for (let j = windowStartIndex; j <= windowEndIndex; j++) {
+      if (j !== i && currentCandle.low >= bufferCandle[j].low) {
+        isValley = false
+        break
+      }
+    }
+
+    // If the current candle is a valley, add it to the valleys array
+    if (isValley) {
+      // Calculate the index from the end of the candles array
+      const indexFromEnd = candlesLength - 1 - i
+      valleys.push({
+        index: indexFromEnd,
+        low: currentCandle.low,
+      })
+    }
+  }
+
+  return valleys
+}
+
 function setSampleBackTestLogic() {
   const initialCode = `
-  //The trading algorithm code should be written in JavaScript.
+  //Trading algorithm code must be written in JavaScript.
   
-  //The open price of current candle
-  const openPrice = currentCandleOpenPrice
+  //Open price and time of current candle
+  const candleOpenPrice = currentCandle.open
+  const candleOpenTime = currentCandle.datetime
 
   //global variables of trading system
-  const orderSize = 1000 //in quote currency (e.g. it's 1000$ in BTC/USD)
+  const orderSize = 1000 //in quote currency (e.g. 1000$ in BTC/USD)
   const stopLoss = 1000 //in quote currency (e.g. 1000$ decrease in BTC/USD price for a buy position)
   const takeProfit = 1000 //in quote currency (e.g. 1000$ increase in BTC/USD price for a buy position)
 
-  //setup() is a necessary function which provides initial settings of the account and broker
+  //setup() is a necessary function which provides initial settings for the account and broker
   function setup() {
     //Account and broker settings (spread, openCommission, closeCommission, and initialAccountBalance) must be set here
     spread = 0 // e.g. 0.0001 for EUR/USD
@@ -742,16 +890,16 @@ function setSampleBackTestLogic() {
       GetLastOpenOrder('Sell') === null
     ) {
       //const randomNumber = Math.floor(Math.random() * 2)
-      const maPeriod = 10 * 24 * 60
-      const maCandleIndex0 = 0
-      const maCandleIndex1 = 60
+      const maPeriod = 2 * 24 * 60 // Two-day period
+      const maCandleIndex0 = 0 //at current candle
+      const maCandleIndex1 = 60 //at 60th previous candle
       const SMAValue0 = MovingAverage(maPeriod, maCandleIndex0)
       const SMAValue1 = MovingAverage(maPeriod, maCandleIndex1)
 
       if (SMAValue0 - SMAValue1 > 0) {
-        OrderSend('BuyStop', orderSize, openPrice, openPrice + takeProfit, openPrice - stopLoss, 1111)
+        OrderSend('BuyStop', orderSize, candleOpenPrice, candleOpenPrice + takeProfit, candleOpenPrice - stopLoss, 1111)
       } else if (SMAValue0 - SMAValue1 < 0) {
-        OrderSend('SellStop', orderSize, openPrice, openPrice - takeProfit, openPrice + stopLoss, 1111)
+        OrderSend('SellStop', orderSize, candleOpenPrice, candleOpenPrice - takeProfit, candleOpenPrice + stopLoss, 1111)
       }
     }
   }

@@ -21,10 +21,15 @@ This project provides a simple backtesting system for algorithmic trading strate
 ### Writing Trading Logic
 
 - Use the provided code editor to write your trading algorithm in JavaScript.
-- The trading logic should be written inside the `loop()` function.
-- You must define a `setup()` function for initial account and broker settings.
-- The `setup()` function is called only once before backtesting starts.
-- The `loop()` function is called for each candle in the provided market data.
+- The `setup()` function is necessary and executed only once at the beginning.
+- The `loop()` function is necessary and executed for each candle in the market data.
+- Initial account and broker settings must be defined inside `setup()` function.
+- The trading logic must be written inside `loop()` function.
+
+Traders have access to current candle data as following:
+
+- `currentCandle.open`: Represents the opening price of current candle.
+- `currentCandle.dateTime`: Represents the opening datetime of current candle.
 
 ### Available Functions
 
@@ -108,10 +113,24 @@ Calculates the moving average of the specified period.
   const maValue = MovingAverage(10, 0)
   ```
 
-### Notes:
+#### 8. `FindPeaks(halfWindowSize, numberOfCandles)`
 
-- The global scope is available for writing custom functions and variables.
-- The `setup()` function is necessary and executed only once at the beginning.
-- The `loop()` function is necessary and executed for each candle in the market data.
-- Ensure to define the `setup()` and `loop()` functions in your code.
-- Use provided functions to interact with the backtesting system and simulate trading.
+Finds peaks in the price data within a specified window.
+
+- `halfWindowSize`: Half of the size of the window to consider for peak detection.
+- `numberOfCandles`: Number of candles to analyze for peak detection.
+  **Example:**
+  ```javascript
+  const peaks = FindPeaks(5, 20)
+  ```
+
+#### 9. `FindValleys(halfWindowSize, numberOfCandles)`
+
+Finds valleys in the price data within a specified window.
+
+- `halfWindowSize`: Half of the size of the window to consider for valley detection.
+- `numberOfCandles`: Number of candles to analyze for valley detection.
+  **Example:**
+  ```javascript
+  const peaks = FindValleys(5, 20)
+  ```

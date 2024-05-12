@@ -11,11 +11,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.63.0/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.63.0/mode/javascript/javascript.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <title>Data Loader</title>
+    <title>Algorithmic Trading Backtest System</title>
   </head>
   <body>
     <div id="uploadMessage">
-      <p>Upload a market data file (.csv) with in following format:</p>
+      <p>Upload a market data file (.csv) in following format:</p>
       <p>
         <small>date and time (unix time stamp), open, high, low, close</small>
       </p>
@@ -31,7 +31,10 @@
     </div>
     <input type="file" id="fileInput" accept=".csv" />
     <textarea id="backtestLogic" rows="10" cols="50"></textarea>
-    <button id="runBacktestButton">Run Backtest</button>
+    <div id="backtestButtonsContainer">
+      <button id="runBacktestButton">Run Backtest</button>
+      <button id="stopBacktestButton">Stop Backtest</button>
+    </div>
     <progress id="testProgress" value="0" max="100"></progress>
     <canvas id="balanceGraph" width="800" height="400"></canvas>
 
