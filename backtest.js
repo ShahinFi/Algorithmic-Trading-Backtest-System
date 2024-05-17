@@ -9,12 +9,14 @@ let closedPositions = []
 let canceledOrders = []
 let candles = []
 let candleIndex = 0
+let currentCandleInAlgorithm = 0
 let currentCandle = 0
 let ticketCounter = 1
 let accountBalance = initialAccountBalance
 let accountBalanceHistory = [accountBalance]
 let accountEquity = [accountBalance]
 let chunkTimeout
+let storedLoop
 
 let myChart
 
@@ -128,12 +130,14 @@ function runBacktest(candles, chunkLength) {
   runBacktestButton.disabled = true
   // Execute setup function if defined
   backtestLogic = editor.getValue()
-  currentCandle = candles[0]
-  currentCandleInLogic = {
+  currentCandleInAlgorithm = candles[0]
+  currentCandle = {
     open: candles[0].open,
     dateTime: candles[0].dateTime,
   }
-  executeSetup(backtestLogic, currentCandleInLogic)
+  eval(backtestLogic)
+  storedLoop = loop
+  setup()
 
   // Clear previous data
   pendingOrders = []
@@ -172,14 +176,14 @@ function runBacktest(candles, chunkLength) {
 
     for (let i = start; i < end; i++) {
       candleIndex = i
-      currentCandle = candles[i]
-      currentCandleInLogic = {
+      currentCandleInAlgorithm = candles[i]
+      currentCandle = {
         open: candles[i].open,
         dateTime: candles[i].dateTime,
       }
-      executeLoop(backtestLogic, candleIndex, currentCandleInLogic)
-      checkPendingOrders(currentCandle)
-      closePositions(currentCandle)
+      storedLoop()
+      checkPendingOrders(currentCandleInAlgorithm)
+      closePositions(currentCandleInAlgorithm)
     }
 
     // Update progress bar after processing each chunk
@@ -192,17 +196,9 @@ function runBacktest(candles, chunkLength) {
     } else {
       // Finished processing all chunks
       drawBalanceGraph(accountBalanceHistory, accountEquity) // Update the balance graph
+      runBacktestButton.disabled = false
       console.log('Backtest completed.')
     }
-  }
-
-  function executeLoop(backtestLogic, currentCandleIndex, currentCandle) {
-    eval(backtestLogic)
-    loop()
-  }
-  function executeSetup(backtestLogic, currentCandle) {
-    eval(backtestLogic)
-    setup()
   }
 }
 
@@ -331,6 +327,8 @@ function closePositions(candle) {
       i--
       console.log(
         'Position closed: ',
+        closeTime,
+        ' ',
         candleIndex,
         ' ',
         position.ticketNumber,
@@ -465,6 +463,16 @@ function OrderSend(
   stopLoss,
   magicNumber
 ) {
+  console.log(
+    'Type: ',
+    orderType,
+    'Open Price: ',
+    executionPrice,
+    'TP: ',
+    takeProfit,
+    'SL: ',
+    stopLoss
+  )
   if (
     orderType !== 'SellLimit' &&
     orderType !== 'BuyLimit' &&
@@ -479,30 +487,100 @@ function OrderSend(
     return
   }
 
-  if (orderType === 'SellLimit' && executionPrice < currentCandle.open) {
+  if (
+    (orderType === 'Sell' || orderType === 'Buy') &&
+    executionPrice !== currentCandleInAlgorithm.open
+  ) {
     console.error(
-      'Invalid order open price. SellLimit open price must be higher than the candle open price.'
+      "Invalid order open price. Opening price of instant orders (buy and sell) must be same as current candle's open price."
     )
     return
   }
 
-  if (orderType === 'BuyLimit' && executionPrice > currentCandle.open) {
+  if (
+    orderType === 'SellLimit' &&
+    executionPrice < currentCandleInAlgorithm.open
+  ) {
     console.error(
-      'Invalid order open price. BuyLimit open price must be lower than the candle open.'
+      'Invalid order open price. SellLimit opening price must be higher than the candle open price.'
     )
     return
   }
 
-  if (orderType === 'SellStop' && executionPrice > currentCandle.open) {
+  if (
+    orderType === 'BuyLimit' &&
+    executionPrice > currentCandleInAlgorithm.open
+  ) {
     console.error(
-      'Invalid order open price. SellStop open price must be lower than the candle open.'
+      'Invalid order open price. BuyLimit opening price must be lower than the candle open.'
     )
     return
   }
 
-  if (orderType === 'BuyStop' && executionPrice < currentCandle.open) {
+  if (
+    orderType === 'SellStop' &&
+    executionPrice > currentCandleInAlgorithm.open
+  ) {
     console.error(
-      'Invalid order open price. BuyStop open price must be higher than the candle open.'
+      'Invalid order open price. SellStop opening price must be lower than the candle open.'
+    )
+    return
+  }
+
+  if (
+    orderType === 'BuyStop' &&
+    executionPrice < currentCandleInAlgorithm.open
+  ) {
+    console.error(
+      'Invalid order open price. BuyStop opening price must be higher than the candle open.'
+    )
+    return
+  }
+
+  if (
+    (orderType === 'SellLimit' ||
+      orderType === 'SellStop' ||
+      orderType === 'Sell') &&
+    executionPrice < takeProfit
+  ) {
+    console.error(
+      "Invalid take profit value. Take profit value must be lower than order's opening price for a sell order."
+    )
+    return
+  }
+
+  if (
+    (orderType === 'BuyLimit' ||
+      orderType === 'BuyStop' ||
+      orderType === 'Buy') &&
+    executionPrice > takeProfit
+  ) {
+    console.error(
+      "Invalid take profit value. Take profit value must be higher than order's opening price for a buy order."
+    )
+    return
+  }
+
+  if (
+    (orderType === 'SellLimit' ||
+      orderType === 'SellStop' ||
+      orderType === 'Sell') &&
+    executionPrice > stopLoss
+  ) {
+    console.error(
+      "Invalid stop loss value. Stop loss value must be higher than order's opening price for a sell order."
+    )
+    return
+  }
+
+  if (
+    (orderType === 'BuyLimit' ||
+      orderType === 'BuyStop' ||
+      orderType === 'Buy') &&
+    executionPrice < stopLoss
+  ) {
+    console.error(
+      "Invalid stop loss value. Stop loss value must be lower than order's opening price for a buy order."
     )
     return
   }
@@ -532,12 +610,14 @@ function OrderSend(
       executionPrice: parseFloat(executionPrice),
       takeProfit: takeProfit,
       stopLoss: stopLoss,
-      orderTime: currentCandle.dateTime,
+      orderTime: currentCandleInAlgorithm.dateTime,
       magicNumber: magicNumber,
     }
     pendingOrders.push(order)
     console.log(
       'Order placed: ',
+      order.orderTime,
+      ' ',
       candleIndex,
       ' ',
       order.ticketNumber,
@@ -559,15 +639,17 @@ function OrderSend(
       ticketNumber: ticketNumber,
       orderType: orderType,
       orderSize: parseFloat(orderSize),
-      executionPrice: currentCandle.open,
+      executionPrice: currentCandleInAlgorithm.open,
       takeProfit: takeProfit,
       stopLoss: stopLoss,
-      openTime: currentCandle.dateTime,
+      openTime: currentCandleInAlgorithm.dateTime,
       magicNumber: magicNumber,
     }
     openPositions.push(openPosition)
     console.log(
       'Position opened: ',
+      openPosition.openTime,
+      ' ',
       candleIndex,
       ' ',
       openPosition.ticketNumber,
