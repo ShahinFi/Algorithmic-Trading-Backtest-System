@@ -685,6 +685,41 @@ function ModifyOrderTPSL(ticketNumber, newTakeProfit, newStopLoss) {
 
   // If the order or position is found, update its take profit and stop loss
   if (orderIndex !== -1) {
+    if (
+      pendingOrders[orderIndex].orderType === 'SellLimit' ||
+      pendingOrders[orderIndex].orderType === 'SellStop'
+    ) {
+      if (pendingOrders[orderIndex].executionPrice < newTakeProfit) {
+        console.error(
+          "Invalid take profit value. Take profit value must be lower than order's opening price for a sell order."
+        )
+        return
+      }
+      if (pendingOrders[orderIndex].executionPrice > newStopLoss) {
+        console.error(
+          "Invalid stop loss value. Stop loss value must be higher than order's opening price for a sell order."
+        )
+        return
+      }
+    }
+
+    if (
+      pendingOrders[orderIndex].orderType === 'BuyLimit' ||
+      pendingOrders[orderIndex].orderType === 'BuyStop'
+    ) {
+      if (pendingOrders[orderIndex].executionPrice > newTakeProfit) {
+        console.error(
+          "Invalid take profit value. Take profit value must be higher than order's opening price for a buy order."
+        )
+        return
+      }
+      if (pendingOrders[orderIndex].executionPrice < newStopLoss) {
+        console.error(
+          "Invalid stop loss value. Stop loss value must be lower than order's opening price for a buy order."
+        )
+        return
+      }
+    }
     pendingOrders[orderIndex].takeProfit = newTakeProfit
     pendingOrders[orderIndex].stopLoss = newStopLoss
     console.log(
@@ -702,6 +737,35 @@ function ModifyOrderTPSL(ticketNumber, newTakeProfit, newStopLoss) {
       pendingOrders[orderIndex].stopLoss
     )
   } else if (positionIndex !== -1) {
+    if (openPositions[positionIndex].orderType === 'Sell') {
+      if (currentCandleInAlgorithm.open < newTakeProfit) {
+        console.error(
+          "Invalid take profit value. Take profit value must be lower than current candle's opening price for a sell order."
+        )
+        return
+      }
+      if (currentCandleInAlgorithm.open > newStopLoss) {
+        console.error(
+          "Invalid stop loss value. Stop loss value must be higher than current candle's opening price for a sell order."
+        )
+        return
+      }
+    }
+
+    if (openPositions[positionIndex].orderType === 'Buy') {
+      if (currentCandleInAlgorithm.open > newTakeProfit) {
+        console.error(
+          "Invalid take profit value. Take profit value must be higher than current candle's opening price for a buy order."
+        )
+        return
+      }
+      if (currentCandleInAlgorithm.open < newStopLoss) {
+        console.error(
+          "Invalid stop loss value. Stop loss value must be lower than current candle's opening price for a buy order."
+        )
+        return
+      }
+    }
     openPositions[positionIndex].takeProfit = newTakeProfit
     openPositions[positionIndex].stopLoss = newStopLoss
     console.log(
@@ -936,13 +1000,13 @@ function setSampleBackTestLogic() {
   //Trading algorithm code must be written in JavaScript.
   
   //Open price and time of current candle
-  const candleOpenPrice = currentCandle.open
-  const candleOpenTime = currentCandle.datetime
+  let candleOpenPrice
+  let candleOpenTime
 
   //global variables of trading system
   const orderSize = 1000 //in quote currency (e.g. 1000$ in BTC/USD)
-  const stopLoss = 1000 //in quote currency (e.g. 1000$ decrease in BTC/USD price for a buy position)
-  const takeProfit = 1000 //in quote currency (e.g. 1000$ increase in BTC/USD price for a buy position)
+  const stopLoss = 1000 //in quote currency (e.g. 100$ decrease in BTC/USD price for a buy position)
+  const takeProfit = 1000 //in quote currency (e.g. 100$ increase in BTC/USD price for a buy position)
 
   //setup() is a necessary function which provides initial settings for the account and broker
   function setup() {
@@ -956,6 +1020,8 @@ function setSampleBackTestLogic() {
   //loop() is a necessary function which executes the main trading code for each candle in provided market data
   function loop() {
     //Main code of the trading algorithm mut be written here
+    candleOpenPrice = currentCandle.open
+    candleOpenTime = currentCandle.datetime
     placeOrder() //an example code
   }
 
@@ -979,9 +1045,9 @@ function setSampleBackTestLogic() {
       const SMAValue1 = MovingAverage(maPeriod, maCandleIndex1)
 
       if (SMAValue0 - SMAValue1 > 0) {
-        OrderSend('BuyStop', orderSize, candleOpenPrice, candleOpenPrice + takeProfit, candleOpenPrice - stopLoss, 1111)
+        OrderSend('Buy', orderSize, candleOpenPrice, candleOpenPrice + takeProfit, candleOpenPrice - stopLoss, 1111)
       } else if (SMAValue0 - SMAValue1 < 0) {
-        OrderSend('SellStop', orderSize, candleOpenPrice, candleOpenPrice - takeProfit, candleOpenPrice + stopLoss, 1111)
+        OrderSend('Sell', orderSize, candleOpenPrice, candleOpenPrice - takeProfit, candleOpenPrice + stopLoss, 1111)
       }
     }
   }
